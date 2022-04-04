@@ -1,0 +1,82 @@
+// Filter the District from the shape file
+var nain = uksp.filter(ee.Filter.eq('name', 'Udam Singh Nagar'));
+Map.addLayer(nain, {}, 'polygon')
+Map.centerObject(nain);
+print(uksp);
+//Load the Dataset
+var ukfc2020 = ee.Image("UMD/hansen/global_forest_change_2020_v1_8")
+//Map.addLayer(ukfc2020, {}, 'treecover2000');
+
+// Clip region of interest with daataset overlay
+Map.addLayer(ukfc2020.clip(nain), {bands: ['last_b50', 'last_b40', 'last_b30']}, 'False Color');
+Map.centerObject(nain, 10);
+
+// forest, loss, gain, and pixels where both loss and gain occur.
+var lossImage = ukfc2020.select(['loss']);
+var gainImage = ukfc2020.select(['gain']);
+var treeCover = ukfc2020.select(['treecover2000']);
+
+// Use the and() method to create the lossAndGain image.
+var gainAndLoss = gainImage.and(lossImage);
+
+//tree cover layer in green.
+Map.addLayer(treeCover.updateMask(treeCover).clip(nain),
+    {palette: ['000000', '00FF00'], max: 100}, 'Forest Cover');
+
+// loss layer in red.
+Map.addLayer(lossImage.updateMask(lossImage).clip(nain),
+    {palette: ['FF0000']}, 'Loss');
+
+//gain layer in cian.
+Map.addLayer(gainImage.updateMask(gainImage).clip(nain),
+    {palette: ['00FFFF']}, 'Gain');
+
+// Show the loss and gain image in meganta.
+Map.addLayer(gainAndLoss.updateMask(gainAndLoss).clip(nain),
+    {palette: 'FF00FF'}, 'Gain and Loss');
+
+
+
+
+var lossImage = ukfc2020.select(['loss']);
+var lossAreaImage = lossImage.multiply(ee.Image.pixelArea());
+
+var lossYear = ukfc2020.select(['lossyear']);
+var lossByYear = lossAreaImage.addBands(lossYear).reduceRegion({
+  reducer: ee.Reducer.sum().group({
+    groupField: 1
+    }),
+  geometry: nain,
+  scale: 30,
+  maxPixels: 1e9
+});
+print(lossByYear);
+
+
+
+
+var statsFormatted = ee.List(lossByYear.get('groups'))
+  .map(function(el) {
+    var d = ee.Dictionary(el);
+    return [ee.Number(d.get('group')).format("20%02d"), d.get('sum')];
+  });
+var statsDictionary = ee.Dictionary(statsFormatted.flatten());
+print(statsDictionary);
+
+
+
+
+var chart = ui.Chart.array.values({
+  array: statsDictionary.values(),
+  axis: 0,
+  xLabels: statsDictionary.keys()
+}).setChartType('ColumnChart')
+  .setOptions({
+    title: 'Yearly Forest Loss',
+    hAxis: {title: 'Year', format: '####'},
+    vAxis: {title: 'Area (square meters)'},
+    legend: { position: "none" },
+    lineWidth: 1,
+    pointSize: 3
+  });
+print(chart);
